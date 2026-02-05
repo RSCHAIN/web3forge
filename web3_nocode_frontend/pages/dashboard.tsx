@@ -4,19 +4,13 @@ import { useEffect, useState, useMemo } from "react";
 import {
   Box, Heading, Text, VStack, HStack, Button, Divider,
   Card, Spinner, useToast, Select, SimpleGrid, Badge, Icon,
-  Container, Flex, IconButton, Switch, FormControl, FormLabel,
-  Tabs, TabList, TabPanels, Tab, TabPanel, useColorModeValue
+  Container, Flex,  useColorModeValue
 } from "@chakra-ui/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useAccount, useDisconnect } from "wagmi";
-import { ethers } from "ethers";
-import { FiHash } from "react-icons/fi";
 
 import { API_BASE } from "../lib/api";
-import ERC20Transactions from "../components/contracts/ERC20Transactions";
-import { TransactionMasteryHeader } from "../components/contracts/TransactionMasteryHeader";
-import InteractionPanel from "../components/InteractionPanel";
 import ConsoleOverview from "../components/dashboard/ConsoleOverview";
 import { AcademySidebar } from "../components/dashboard/AcademySidebar";
 import Level0Lab from "../components/academy/Level0Lab";
@@ -110,10 +104,7 @@ export default function Dashboard() {
             ) : activeTab === "lvl0" ? (
               <MotionBox key="lvl0" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                 {/* 🚀 On affiche Level0Lab sans condition, c'est lui qui gère son état interne */}
-                <Level0Lab 
-                  contractAddress={currentContract?.contract_address} 
-                  abi={currentContract?.abi}
-                  onDeploySuccess={fetchDashboard}
+                <Level0Lab
                 />
               </MotionBox>
             ) : currentContract && (

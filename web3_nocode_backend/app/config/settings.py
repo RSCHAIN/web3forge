@@ -1,5 +1,5 @@
 # app/config/settings.py
-# app/config/settings.py
+
 import os
 from dotenv import load_dotenv
 

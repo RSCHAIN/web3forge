@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.init_db import init_db
-from app.api import routes_auth, routes_templates, routes_deployment, routes_dashboard
+from app.api import routes_auth, routes_templates, routes_deployment, routes_dashboard, hello_deployment
 from app.config.networks_init import init_networks
 from app.config.networks import NETWORKS
 
@@ -27,6 +27,7 @@ async def startup():
 app.include_router(routes_auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(routes_templates.router, prefix="/templates", tags=["Templates"])
 app.include_router(routes_deployment.router, prefix="/deploy", tags=["deployment"])
+app.include_router(hello_deployment.router, prefix="/deploy", tags=["deployment"])
 app.include_router(routes_dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 
 @app.get("/")
