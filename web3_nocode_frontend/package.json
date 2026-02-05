@@ -1,0 +1,32 @@
+{
+  "name": "web3-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@chakra-ui/icons": "^2.2.4",
+    "@chakra-ui/react": "^2.10.9",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@tanstack/react-query": "^5.90.5",
+    "axios": "^1.12.2",
+    "ethers": "^6.15.0",
+    "framer-motion": "^10.18.0",
+    "lucide-react": "^0.552.0",
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-icons": "^5.5.0",
+    "viem": "^2.38.5",
+    "wagmi": "^2.19.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.3.0",
+    "typescript": "^5.4.0"
+  }
+}
