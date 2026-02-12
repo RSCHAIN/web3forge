@@ -12,8 +12,12 @@ import {
   Button,
   Divider,
   Code,
+  useColorModeValue,
+  Icon,
+  HStack,
+  Heading,
 } from "@chakra-ui/react";
-import { FiZap, FiRefreshCcw } from "react-icons/fi";
+import { FiZap, FiRefreshCcw, FiDatabase, FiSettings } from "react-icons/fi";
 
 interface InteractionConsoleProps {
   currentMessage: string;
@@ -26,6 +30,7 @@ interface InteractionConsoleProps {
   colors: {
     panel: string;
     accent: string;
+    border: string;
   };
 }
 
@@ -39,139 +44,162 @@ export default function InteractionConsole({
   isDeployed,
   colors,
 }: InteractionConsoleProps) {
+  // 🎨 Couleurs adaptatives
+  const innerBoxBg = useColorModeValue("gray.50", "blackAlpha.400");
+  const inputBg = useColorModeValue("white", "black");
+  const inputBorder = useColorModeValue("gray.200", "whiteAlpha.200");
+  const subTextColor = useColorModeValue("gray.600", "gray.500");
+  const mainTextColor = useColorModeValue("gray.800", "white");
+  const valueDisplayBg = useColorModeValue("purple.50", "whiteAlpha.50");
+  const valueColor = useColorModeValue("purple.600", "green.300");
+
   return (
     <Card
       bg={colors.panel}
       border="1px solid"
-      borderColor={colors.accent}
+      borderColor={colors.border}
       borderRadius="2xl"
+      boxShadow="xl"
+      overflow="hidden"
     >
+      <Box bg={colors.accent} h="4px" />
       <CardBody p={6}>
-        <VStack align="stretch" spacing={4}>
+        <VStack align="stretch" spacing={5}>
+          {/* 🧠 EN-TÊTE CONSOLE */}
+          <HStack justify="space-between">
+            <HStack>
+              <Icon as={FiSettings} color={colors.accent} />
+              <Heading size="xs" letterSpacing="widest" color={mainTextColor}>
+                CONSOLE DE CONTRÔLE
+              </Heading>
+            </HStack>
+          </HStack>
+
           {/* 🧠 MODE NON DÉPLOYÉ */}
           {!isDeployed && (
-            <>
-              <Text fontSize="sm" color="gray.400">
-                Ce smart contract contient :
-                <br />• une <Code>variable</Code> de stockage  
-                <br />• une <Code>fonction</Code> modifiant son état
-              </Text>
+            <VStack align="stretch" spacing={4} py={4}>
+              <Box p={4} bg={innerBoxBg} borderRadius="xl" border="1px dashed" borderColor={colors.border}>
+                <Text fontSize="sm" color={mainTextColor} lineHeight="tall">
+                  Ce smart contract contient :
+                  <br />• une <Code colorScheme="purple">variable</Code> de stockage  
+                  <br />• une <Code colorScheme="purple">fonction</Code> modifiant son état
+                </Text>
+              </Box>
 
-              <Text fontSize="xs" color="gray.500">
+              <Text fontSize="xs" color={subTextColor} textAlign="center">
                 Commence par le déployer pour l’exécuter sur la blockchain.
               </Text>
 
               <Button
                 colorScheme="purple"
                 size="lg"
+                h="60px"
                 leftIcon={<FiZap />}
                 onClick={handleDeploy}
+                boxShadow="0 4px 14px 0 rgba(128, 90, 213, 0.39)"
               >
                 🚀 Déployer HelloStorage
               </Button>
-            </>
+            </VStack>
           )}
 
           {/* ✅ MODE DÉPLOYÉ */}
           {isDeployed && (
             <>
-              {/* 📦 VARIABLE */}
+              {/* 📦 VARIABLE STATE */}
               <Box
-                bg="black"
+                bg={innerBoxBg}
                 p={4}
-                borderRadius="lg"
+                borderRadius="xl"
                 border="1px solid"
-                borderColor="whiteAlpha.100"
+                borderColor={colors.border}
               >
-                <Text fontSize="xs" color="gray.500">
-                  Variable Solidity
-                </Text>
+                <HStack mb={2}>
+                  <Icon as={FiDatabase} boxSize={3} color={subTextColor} />
+                  <Text fontSize="10px" fontWeight="black" color={subTextColor} letterSpacing="wider">
+                    ÉTAT DU CONTRAT
+                  </Text>
+                </HStack>
 
-                <Code colorScheme="purple" fontSize="sm">
+                <Code colorScheme="purple" fontSize="2xs" mb={3} variant="subtle">
                   string public message
                 </Code>
 
-                <Divider my={3} />
-
-                <Text fontSize="xs" color="gray.500">
-                  Valeur actuelle stockée dans le contrat
-                </Text>
-
-                <Text
-                  color="green.300"
-                  fontWeight="bold"
-                  fontSize="lg"
-                  textAlign="center"
-                  fontFamily="mono"
+                <Box
+                  bg={valueDisplayBg}
+                  p={4}
+                  borderRadius="lg"
+                  border="1px solid"
+                  borderColor="purple.100"
+                  _dark={{ borderColor: "whiteAlpha.100" }}
                 >
-                  message = "{currentMessage}"
-                </Text>
+                  <Text
+                    color={valueColor}
+                    fontWeight="bold"
+                    fontSize="lg"
+                    textAlign="center"
+                    fontFamily="mono"
+                  >
+                    "{currentMessage}"
+                  </Text>
+                </Box>
               </Box>
 
-              {/* 🔧 FONCTION */}
-              <Box>
-                <Text fontSize="xs" color="gray.500" mb={1}>
-                  Fonction appelée
+              {/* 🔧 FONCTION & INPUT */}
+              <VStack align="stretch" spacing={4}>
+                <FormControl>
+                  <FormLabel fontSize="10px" fontWeight="bold" color={subTextColor}>
+                    FONCTION <Code fontSize="10px">setMessage(string)</Code>
+                  </FormLabel>
+
+                  <Input
+                    placeholder='Entrez une nouvelle valeur...'
+                    bg={inputBg}
+                    h="50px"
+                    border="1px solid"
+                    borderColor={inputBorder}
+                    color={mainTextColor}
+                    _focus={{
+                      borderColor: colors.accent,
+                      boxShadow: `0 0 0 1px ${colors.accent}`,
+                    }}
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                  />
+                </FormControl>
+
+                <Button
+                  colorScheme="purple"
+                  w="full"
+                  h="50px"
+                  leftIcon={<FiZap />}
+                  isLoading={isProcessing}
+                  onClick={handleUpdate}
+                  isDisabled={!newMessage}
+                >
+                  Envoyer la Transaction
+                </Button>
+              </VStack>
+
+              <Divider borderColor={colors.border} />
+
+              {/* 🔁 REDEPLOY ZONE */}
+              <VStack align="stretch" spacing={3}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  colorScheme="gray"
+                  leftIcon={<FiRefreshCcw />}
+                  onClick={handleDeploy}
+                  fontSize="xs"
+                >
+                  Nouveau Déploiement
+                </Button>
+
+                <Text fontSize="10px" color={subTextColor} textAlign="center" fontStyle="italic">
+                  Crée une instance isolée avec sa propre adresse.
                 </Text>
-
-                <Code colorScheme="purple" fontSize="sm">
-                  setMessage(string newMessage)
-                </Code>
-              </Box>
-
-              {/* ✍️ INPUT */}
-              <FormControl>
-                <FormLabel fontSize="10px" color="gray.500">
-                  Nouvelle valeur de <Code>message</Code>
-                </FormLabel>
-
-                <Input
-                  placeholder='ex: "Salut Web3 👋"'
-                  bg="black"
-                  border="none"
-                  color="white"
-                  _focus={{
-                    border: "1px solid",
-                    borderColor: colors.accent,
-                  }}
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                />
-              </FormControl>
-
-              {/* 🚀 ACTION */}
-              <Button
-                colorScheme="purple"
-                w="full"
-                leftIcon={<FiZap />}
-                isLoading={isProcessing}
-                onClick={handleUpdate}
-              >
-                Appeler setMessage(...)
-              </Button>
-
-              {/* 🧠 EXPLICATION */}
-              <Text fontSize="xs" color="gray.500">
-                Cette action ouvre MetaMask pour signer une transaction qui
-                modifie l’état du smart contract sur la blockchain.
-              </Text>
-
-              <Divider />
-
-              {/* 🔁 REDEPLOY */}
-              <Button
-                variant="outline"
-                colorScheme="purple"
-                leftIcon={<FiRefreshCcw />}
-                onClick={handleDeploy}
-              >
-                🔁 Redéployer (nouvelle instance)
-              </Button>
-
-              <Text fontSize="xs" color="gray.500">
-                Redéployer crée une <b>nouvelle instance</b> du même contrat,
-                avec sa propre adresse et son propre état.
-              </Text>
+              </VStack>
             </>
           )}
         </VStack>

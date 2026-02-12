@@ -1,28 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   VStack,
   Grid,
   GridItem,
   Text,
   Box,
-  Button,
-  HStack,
   Heading,
   Icon,
   Badge,
-  Tooltip,
   useToast,
+  useColorModeValue,
+  HStack,
 } from "@chakra-ui/react";
 import { ethers } from "ethers";
-import { 
-  FaRocket, 
-  FaDatabase, 
-  FaHistory, 
-  FaLayerGroup, 
+import {
+  FaRocket,
+  FaDatabase,
+  FaHistory,
+  FaLayerGroup,
   FaNetworkWired,
-  FaCheckCircle 
+  FaCheckCircle,
 } from "react-icons/fa";
 
 import ContractLifecycle from "./ContractLifecycle";
@@ -30,207 +29,389 @@ import ContractCodeViewer from "./ContractCodeViewer";
 import TransactionFlow from "./TransactionFlow";
 import InteractionConsole from "./InteractionConsole";
 import TransactionHistory from "./TransactionHistory";
+import BlockchainVisualizer from "../BlockchainVisualizer";
+
+import MiningControls from "../MiningControls";
+import BlockchainControlPanel from "../BlockchainControlPanel";
+
+import { useBlockchainMining } from "../../hooks/useBlockchainMining";
+import { useMempool } from "../../hooks/useMempool";
+import { useBlockTimer } from "../../hooks/useBlockTimer";
 
 import { API_BASE } from "../../lib/api";
+import { TxInfo, DeploymentInfo } from "../types/txinfo";
+import { getNetworkLabel, isTestNetwork } from "../../lib/getprovider";
 
-/* =======================
-   Types
-======================= */
-interface TxInfo {
-  hash: string;
-  type: "deploy" | "write";
-  blockNumber: number;
-  gasUsed: bigint;
-  gasPrice: bigint;
+import ContractInstancesPanel from "../ContractInstancesPanel"; // ajuste chemin
+
+
+interface Level0LabProps {
+  connectedAddress?: string;
+  isConnected?: boolean;
 }
+type LabColors = {
+  panel: string;
+  border: string;
+  accent: string;
+};
 
-interface DeploymentInfo {
-  address: string;
-  txHash: string;
-  blockNumber: number;
-}
 
-/* =======================
-   MAIN COMPONENT
-======================= */
-export default function Level0Lab() {
+export default function Level0Lab({
+  connectedAddress,
+  isConnected,
+}: Level0LabProps) {
   const toast = useToast();
 
-  // 🔹 États du contrat
-  const [abi, setAbi] = useState<any[] | null>(null);
-  const [contractAddress, setContractAddress] = useState<string | null>(null);
-  const [contractInstance, setContractInstance] = useState<ethers.Contract | null>(null);
+  // 🎨 UI
+  const bgColor = useColorModeValue("gray.50", "#0A0A0F");
+  const panelBg = useColorModeValue("white", "rgba(22, 22, 29, 0.8)");
+  const borderColor = useColorModeValue("gray.200", "whiteAlpha.200");
+  const textColor = useColorModeValue("gray.800", "white");
+  const subTextColor = useColorModeValue("gray.500", "gray.500");
 
-  // 🔹 États pédagogiques
+  // 🧠 Hooks blockchain
+  const mining = useBlockchainMining();
+  const mempool = useMempool();
+  const timer = useBlockTimer();
+
+  // 🔹 États Smart Contract
+  const [abi, setAbi] = useState<ethers.Interface | null>(null);
+  const [contractAddress, setContractAddress] = useState<string | null>(null);
+  const [contractInstance, setContractInstance] =
+    useState<ethers.Contract | null>(null);
   const [currentMessage, setCurrentMessage] = useState<string>("...");
   const [newMessage, setNewMessage] = useState<string>("");
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [txStatus, setTxStatus] = useState<"idle" | "signing" | "broadcast" | "confirmed">("idle");
+  const [txStatus, setTxStatus] = useState<
+    "idle" | "signing" | "broadcast" | "confirmed"
+  >("idle");
 
-  // 🔹 Historiques
   const [transactions, setTransactions] = useState<TxInfo[]>([]);
   const [deployments, setDeployments] = useState<DeploymentInfo[]>([]);
 
-  const colors = {
-    bg: "#0A0A0F",
-    panel: "rgba(22, 22, 29, 0.8)",
-    border: "whiteAlpha.200",
-    accent: "#805AD5",
-    cardBg: "whiteAlpha.50",
-  };
+  
 
-  /* =======================
-     🚀 DEPLOY LOGIC
-  ======================= */
-  const handleDeploy = async (): Promise<void> => {
-    if (!window.ethereum) {
-      toast({ title: "Wallet non détecté", status: "error" });
-      return;
+  // =====================================================
+  // 🔍 FETCH BLOCKCHAIN DATA
+  // =====================================================
+
+  const colors: LabColors = {
+  panel: panelBg,
+  border: borderColor,
+  accent: "#805AD5",
+};
+
+
+  const fetchUserDeployments = useCallback(async () => {
+  if (!connectedAddress || !window.ethereum) return;
+
+  try {
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const network = await provider.getNetwork();
+    const networkLabel = getNetworkLabel(network.chainId);
+
+    const res = await fetch(
+      `${API_BASE}/deploy/byUser/${connectedAddress}?network=${networkLabel}`
+    );
+    const data = await res.json();
+    const records: DeploymentInfo[] = data.deployments || [];
+
+    // 🔎 Vérification réelle sur la blockchain
+    const validDeployments: DeploymentInfo[] = [];
+
+    for (const deployment of records) {
+      try {
+        const code = await provider.getCode(deployment.contract_address);
+
+        if (code && code !== "0x" && code !== "0x0") {
+          validDeployments.push(deployment);
+        }
+      } catch {
+        // ignore silently
+      }
     }
 
-    try {
-      await window.ethereum.request({ method: "eth_requestAccounts" });
-      setTxStatus("signing");
+    setDeployments(validDeployments);
 
-      const res = await fetch(`${API_BASE}/deploy/hello-storage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          network: "anvil",
-          initial_message: "Hello World",
-          wallet_address: "0x",
-        }),
-      });
+    // -----------------------------
+    // 🔄 SCAN DES BLOCS (inchangé)
+    // -----------------------------
 
-      const data = await res.json();
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const factory = new ethers.ContractFactory(data.abi, data.bytecode, signer);
+    const currentBlock = await provider.getBlockNumber();
+    const startBlock = Math.max(1, currentBlock - 9);
 
-      const deployed = await factory.deploy(...data.constructorArgs);
-      setTxStatus("broadcast");
+    const history: TxInfo[] = [];
 
-      const deployTx = deployed.deploymentTransaction();
-      const receipt = deployTx ? await deployTx.wait() : null;
-      const address = await deployed.getAddress();
+    for (let i = startBlock; i <= currentBlock; i++) {
+      const block = await provider.getBlock(i, true);
+      if (!block) continue;
 
-      const contract = new ethers.Contract(address, data.abi, signer);
-      setAbi(data.abi);
-      setContractAddress(address);
-      setContractInstance(contract);
+      const timestamp = Number(block.timestamp);
 
-      const msg = await contract.message();
-      setCurrentMessage(msg);
-      setTxStatus("confirmed");
-
-      if (receipt && deployTx) {
-        setTransactions((prev) => [
-          {
-            hash: deployTx.hash,
-            type: "deploy",
-            blockNumber: receipt.blockNumber,
-            gasUsed: receipt.gasUsed,
-            gasPrice: receipt.gasPrice ?? 0n,
-          },
-          ...prev,
-        ]);
-
-        setDeployments((prev) => [{ address, txHash: deployTx.hash, blockNumber: receipt.blockNumber }, ...prev]);
+      if (!block.transactions.length) {
+        history.push({
+          hash: `empty-${i}`,
+          type: "empty",
+          blockNumber: i,
+          timestamp,
+          from: "System",
+          gasUsed: 0n,
+          gasPrice: 0n,
+          value: 0n,
+          nonce: 0,
+          status: "success",
+        });
+        continue;
       }
 
-      setTimeout(() => setTxStatus("idle"), 3000);
-    } catch (e) {
-      console.error(e);
-      setTxStatus("idle");
-    }
-  };
+      for (const txHash of block.transactions as string[]) {
+        const tx = await provider.getTransaction(txHash);
+        const receipt = await provider.getTransactionReceipt(txHash);
+        if (!tx || !receipt) continue;
 
-  /* =======================
-     ✍️ WRITE LOGIC
-  ======================= */
-  const handleUpdate = async (): Promise<void> => {
-    if (!contractInstance || !newMessage) return;
-    setIsProcessing(true);
+        const isDeploy = !!receipt.contractAddress;
+
+        history.push({
+          hash: tx.hash,
+          type: isDeploy ? "deploy" : "write",
+          blockNumber: i,
+          timestamp,
+          gasUsed: receipt.gasUsed ?? 0n,
+          gasPrice: tx.gasPrice ?? tx.maxFeePerGas ?? 0n,
+          from: tx.from ?? "0x...",
+          to: tx.to ?? undefined,
+          value: tx.value ?? 0n,
+          nonce: tx.nonce ?? 0,
+          status: receipt.status === 1 ? "success" : "failed",
+        });
+      }
+    }
+
+    setTransactions(history.sort((a, b) => b.blockNumber - a.blockNumber));
+  } catch (error) {
+    console.error("Erreur fetch deployments:", error);
+  }
+}, [connectedAddress]);
+
+
+  useEffect(() => {
+    if (isConnected && connectedAddress) {
+      fetchUserDeployments();
+    }
+  }, [isConnected, connectedAddress, fetchUserDeployments]);
+
+  const handleSelectInstance = useCallback(
+  async (deployment: DeploymentInfo) => {
+    if (!window.ethereum) return;
 
     try {
-      setTxStatus("signing");
-      const tx = await contractInstance.setMessage(newMessage);
-      setTxStatus("broadcast");
+      setIsProcessing(true);
 
-      const receipt = await tx.wait();
-      setTxStatus("confirmed");
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
 
-      setTransactions((prev) => [
-        {
-          hash: tx.hash,
-          type: "write",
-          blockNumber: receipt.blockNumber,
-          gasUsed: receipt.gasUsed,
-          gasPrice: receipt.gasPrice ?? 0n,
-        },
-        ...prev,
-      ]);
+      // Vérifie existence du bytecode
+      const code = await provider.getCode(deployment.contract_address);
+      if (code === "0x" || code === "0x0") {
+        toast({
+          title: "Instance introuvable",
+          description:
+            "Le contrat n'existe pas sur ce réseau (Anvil peut avoir redémarré).",
+          status: "warning",
+        });
+        return;
+      }
 
-      const msg = await contractInstance.message();
-      setCurrentMessage(msg);
-      setNewMessage("");
-      setTimeout(() => setTxStatus("idle"), 3000);
+      // ABI : priorité à l'ABI stockée dans la DB (deployment.abi) sinon fallback sur state
+      const effectiveAbi = (deployment.abi as any) ?? abi;
+
+      if (!effectiveAbi) {
+        toast({
+          title: "ABI manquante",
+          description:
+            "Impossible de charger cette instance sans ABI. Assure-toi que l'ABI est bien enregistrée.",
+          status: "error",
+        });
+        return;
+      }
+
+      // Init contract instance
+      const instance = new ethers.Contract(
+        deployment.contract_address,
+        effectiveAbi,
+        signer
+      );
+
+      setAbi(effectiveAbi);
+      setContractAddress(deployment.contract_address);
+      setContractInstance(instance);
+
+      // Lecture message() si dispo
+      try {
+        const msg = await instance.message();
+        setCurrentMessage(msg);
+      } catch {
+        setCurrentMessage("—");
+      }
+
+      toast({
+        title: "Instance chargée",
+        description: deployment.contract_address,
+        status: "success",
+      });
     } catch (e) {
       console.error(e);
-      setTxStatus("idle");
+      toast({
+        title: "Erreur de chargement",
+        status: "error",
+      });
     } finally {
       setIsProcessing(false);
     }
-  };
+  },
+  [abi, toast]
+);
 
-  /* =======================
-     🔄 SWITCH INSTANCE
-  ======================= */
-  const switchInstance = async (d: DeploymentInfo) => {
-    if (!window.ethereum || !abi) return;
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const contract = new ethers.Contract(d.address, abi, signer);
-      
-      setContractAddress(d.address);
-      setContractInstance(contract);
-      const msg = await contract.message();
-      setCurrentMessage(msg);
-      
-      toast({ title: "Contrat activé", status: "success", duration: 2000 });
-    } catch (e) {
-      console.error(e);
+
+  // =====================================================
+  // 🚀 DEPLOY
+  // =====================================================
+
+  const handleDeploy = async () => {
+  if (!window.ethereum) return;
+
+  try {
+    setTxStatus("signing");
+
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const network = await provider.getNetwork();
+
+    if (!isTestNetwork(network.chainId)) {
+      toast({
+        title: "Réseau non autorisé",
+        status: "error",
+      });
+      setTxStatus("idle");
+      return;
     }
-  };
+
+    const signer = await provider.getSigner();
+    const userAddress = await signer.getAddress();
+    const networkLabel = getNetworkLabel(network.chainId);
+
+    // 🔥 ON RÉCUPÈRE ABI + BYTECODE DEPUIS TON BACKEND
+    const res = await fetch(`${API_BASE}/deploy/hello-storage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        network: networkLabel,
+        initial_message: "Hello World",
+        wallet_address: userAddress,
+      }),
+    });
+
+    if (!res.ok) throw new Error("Erreur compilation");
+
+    const data = await res.json();
+
+    const factory = new ethers.ContractFactory(
+      data.abi,
+      data.bytecode,
+      signer
+    );
+
+    const deployed = await factory.deploy(...data.constructorArgs);
+
+    setTxStatus("broadcast");
+
+    const receipt = await deployed.deploymentTransaction()?.wait();
+    if (!receipt) throw new Error("Deploy failed");
+
+    const address = await deployed.getAddress();
+
+    const instance = new ethers.Contract(address, data.abi, signer);
+
+    setAbi(data.abi);
+    setContractAddress(address);
+    setContractInstance(instance);
+
+    const msg = await instance.message();
+    setCurrentMessage(msg);
+
+    setTxStatus("confirmed");
+
+    toast({
+      title: "Déploiement réussi",
+      status: "success",
+    });
+
+    await fetchUserDeployments();
+
+  } catch (error) {
+    console.error(error);
+    setTxStatus("idle");
+    toast({
+      title: "Erreur de déploiement",
+      status: "error",
+    });
+  }
+};
+
 
   const isDeployed = Boolean(contractInstance);
 
+  const [isProcessing, setIsProcessing] = useState(false);
+
+const handleUpdate = async (): Promise<void> => {
+  if (!contractInstance || !newMessage) return;
+
+  try {
+    setIsProcessing(true);
+    setTxStatus("signing");
+
+    const tx = await contractInstance.setMessage(newMessage);
+    setTxStatus("broadcast");
+
+    await tx.wait();
+
+    setTxStatus("confirmed");
+    setNewMessage("");
+    fetchUserDeployments();
+  } catch (error) {
+    console.error(error);
+    setTxStatus("idle");
+  } finally {
+    setIsProcessing(false);
+  }
+};
+
+
+
+
+  // =====================================================
+  // 🖥 UI
+  // =====================================================
+
   return (
-    <Box bg={colors.bg} minH="100vh" p={{ base: 4, md: 8 }} fontFamily="body">
+    <Box bg={bgColor} minH="100vh" p={{ base: 4, md: 8 }}>
       <VStack spacing={8} align="stretch" maxW="1440px" mx="auto">
-        
-        {/* --- HEADER --- */}
-        <Box 
-          p={6} 
-          bg={colors.panel} 
-          borderRadius="2xl" 
-          border="1px solid" 
-          borderColor={colors.border}
-          backdropFilter="blur(10px)"
+        {/* HEADER */}
+        <Box
+          p={6}
+          bg={panelBg}
+          borderRadius="2xl"
+          border="1px solid"
+          borderColor={borderColor}
         >
-          <HStack justify="space-between" mb={8}>
-            <VStack align="left" spacing={1}>
-              <HStack>
-                <Icon as={FaRocket} color="purple.400" />
-                <Heading size="md" color="white" fontWeight="900" letterSpacing="tight">
-                  LAB 001 : SMART CONTRACT STORAGE
-                </Heading>
-              </HStack>
-              <Text fontSize="xs" color="gray.500" fontWeight="bold">MODULE PÉDAGOGIQUE • RÉSEAU DE TEST</Text>
-            </VStack>
-            <Badge colorScheme={isDeployed ? "green" : "gray"} variant="subtle" px={3} py={1} borderRadius="full">
-              {isDeployed ? "Node connected" : "Not deployed"}
+          <HStack justify="space-between">
+            <HStack>
+              <Icon as={FaRocket} color="purple.500" />
+              <Heading size="md" color={textColor}>
+                LAB 001 : SMART CONTRACT STORAGE
+              </Heading>
+            </HStack>
+
+            <Badge colorScheme={isDeployed ? "green" : "gray"}>
+              {isDeployed ? "Connected" : "Disconnected"}
             </Badge>
           </HStack>
 
@@ -241,106 +422,68 @@ export default function Level0Lab() {
           />
         </Box>
 
-        {/* --- MAIN LAYOUT --- */}
-        <Grid templateColumns={{ base: "1fr", lg: "repeat(12, 1fr)" }} gap={6}>
-          
-          {/* GAUCHE : Code & Flow */}
-          <GridItem colSpan={{ base: 12, lg: 8 }}>
-            <VStack spacing={6} align="stretch">
-              <Box borderRadius="2xl" overflow="hidden" border="1px solid" borderColor={colors.border} bg="#000">
-                <HStack bg="whiteAlpha.100" p={3} px={5} borderBottom="1px solid" borderColor={colors.border} justify="space-between">
-                  <HStack spacing={3}>
-                    <Icon as={FaDatabase} color="purple.400" />
-                    <Text fontSize="xs" fontWeight="black" letterSpacing="widest" color="gray.400">HELLOSTORAGE.SOL</Text>
-                  </HStack>
-                  <Badge variant="outline" colorScheme="purple" fontSize="10px">Solidity 0.8.19</Badge>
-                </HStack>
-                <ContractCodeViewer colors={colors} />
-              </Box>
+        {/* MAIN GRID */}
+        <Grid templateColumns={{ base: "1fr", lg: "8fr 4fr" }} gap={6}>
+          <GridItem>
+            <ContractCodeViewer colors={{ accent: "#805AD5" }} />
 
-              <Box p={6} bg={colors.panel} borderRadius="2xl" border="1px solid" borderColor={colors.border}>
-                <HStack mb={4}>
-                  <Icon as={FaNetworkWired} color="cyan.400" />
-                  <Text fontSize="xs" fontWeight="bold" color="gray.400">SÉQUENCE DE TRANSACTION</Text>
-                </HStack>
-                <TransactionFlow status={txStatus} />
-              </Box>
-            </VStack>
+            <Box mt={6}>
+              <TransactionFlow status={txStatus} />
+            </Box>
           </GridItem>
 
-          {/* DROITE : Console & Deployments */}
-          <GridItem colSpan={{ base: 12, lg: 4 }}>
-            <VStack spacing={6} align="stretch" position="sticky" top="24px">
-              
-              <InteractionConsole
-                currentMessage={currentMessage}
-                newMessage={newMessage}
-                setNewMessage={setNewMessage}
-                handleUpdate={handleUpdate}
-                handleDeploy={handleDeploy}
-                isProcessing={isProcessing}
-                isDeployed={isDeployed}
-                colors={colors}
-              />
+          <GridItem>
+          <VStack spacing={6} align="stretch" position="sticky" top="24px">
+            <InteractionConsole
+              currentMessage={currentMessage}
+              newMessage={newMessage}
+              setNewMessage={setNewMessage}
+              handleDeploy={handleDeploy}
+              handleUpdate={handleUpdate}
+              isProcessing={isProcessing}
+              isDeployed={isDeployed}
+              colors={colors}
+            />
 
-              {/* Instances de contrats */}
-              <Box p={5} bg={colors.panel} borderRadius="2xl" border="1px solid" borderColor={colors.border}>
-                <HStack mb={4} justify="space-between">
-                  <HStack>
-                    <Icon as={FaLayerGroup} color="orange.400" />
-                    <Text fontSize="xs" fontWeight="black" color="gray.400">INSTANCES DÉPLOYÉES</Text>
-                  </HStack>
-                  <Badge borderRadius="full">{deployments.length}</Badge>
-                </HStack>
-                
-                <VStack align="stretch" spacing={3} maxH="320px" overflowY="auto" className="custom-scrollbar">
-                  {deployments.length === 0 ? (
-                    <Box textAlign="center" py={8} border="1px dashed" borderColor="whiteAlpha.200" borderRadius="xl">
-                      <Text fontSize="xs" color="gray.600">Aucun déploiement détecté</Text>
-                    </Box>
-                  ) : (
-                    deployments.map((d, i) => (
-                      <Box
-                        key={d.txHash}
-                        p={4}
-                        bg={d.address === contractAddress ? "whiteAlpha.100" : "transparent"}
-                        borderRadius="xl"
-                        border="1px solid"
-                        borderColor={d.address === contractAddress ? "purple.500" : "whiteAlpha.100"}
-                        cursor="pointer"
-                        onClick={() => switchInstance(d)}
-                        transition="all 0.2s"
-                        _hover={{ bg: "whiteAlpha.50", borderColor: "purple.300" }}
-                      >
-                        <HStack justify="space-between">
-                          <Text fontSize="xs" fontWeight="bold" color={d.address === contractAddress ? "purple.300" : "white"}>
-                            Instance #{deployments.length - i}
-                          </Text>
-                          {d.address === contractAddress && (
-                            <Icon as={FaCheckCircle} color="purple.400" boxSize={3} />
-                          )}
-                        </HStack>
-                        <Text fontSize="10px" fontFamily="mono" color="gray.500" mt={2} noOfLines={1}>
-                          {d.address}
-                        </Text>
-                      </Box>
-                    ))
-                  )}
-                </VStack>
-              </Box>
-            </VStack>
-          </GridItem>
+            <ContractInstancesPanel
+              deployments={deployments}
+              activeContractAddress={contractAddress}
+              onSelect={handleSelectInstance}
+              colors={colors}
+            />
+          </VStack>
+        </GridItem>
+
         </Grid>
 
-        {/* --- FOOTER : HISTORY --- */}
-        <Box pt={4}>
-           <HStack mb={4} spacing={3}>
-              <Icon as={FaHistory} color="blue.400" />
-              <Text fontSize="sm" fontWeight="black" letterSpacing="widest" color="gray.400">HISTORIQUE DES TRANSACTIONS</Text>
-           </HStack>
-           <TransactionHistory transactions={transactions} />
-        </Box>
+        {/* MINING CONTROLS */}
+        <MiningControls
+          isAutomine={mining.isAutomine}
+          isMining={mining.isMining}
+          lastMinedBlock={mining.lastMinedBlock}
+          pendingCount={mempool.pendingCount}
+          toggleMiningMode={mining.toggleMiningMode}
+          manualMine={mining.manualMine}
+        />
 
+        <BlockchainControlPanel
+          latestBlock={timer.latestBlock}
+          secondsSinceLastBlock={timer.secondsSinceLastBlock}
+          pendingCount={mempool.pendingCount}
+        />
+
+        <BlockchainVisualizer transactions={transactions} />
+
+        <Box>
+          <HStack mb={4}>
+            <Icon as={FaHistory} color="blue.500" />
+            <Text fontSize="sm" fontWeight="bold" color={subTextColor}>
+              HISTORIQUE
+            </Text>
+          </HStack>
+
+          <TransactionHistory transactions={transactions} />
+        </Box>
       </VStack>
     </Box>
   );

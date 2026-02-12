@@ -1,14 +1,12 @@
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
-from solcx import compile_standard, install_solc
 from datetime import datetime
-from app.db.models.deployment import ContractData, DeploymentRecord, Deployment
-import json, os
+from app.db.models.deployment import DeploymentRecord, Deployment
 from app.utils.etherscan_utils import (
     get_wallet_balance,
     get_wallet_activity,
 )
 from app.api.services.solidity_compiler import compile_contract
+from app.config.settings import settings
 
 router = APIRouter()
 
@@ -123,8 +121,10 @@ async def get_deployments_by_user(
         network = network.lower()
 
         # 🧱 MongoDB
+        # Dans ton endpoint GET /byUser/{user_address}
         deployments = await Deployment.find(
-            Deployment.user_id == user_address
+            Deployment.user_id == user_address,
+            Deployment.chain == network # 👈 Ajoute ce filtre
         ).to_list()
 
         # 🏠 LOCAL / ANVIL → PAS d’Etherscan
