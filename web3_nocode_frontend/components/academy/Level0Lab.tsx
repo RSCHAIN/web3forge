@@ -43,6 +43,8 @@ import { TxInfo, DeploymentInfo } from "../types/txinfo";
 import { getNetworkLabel, isTestNetwork } from "../../lib/getprovider";
 
 import ContractInstancesPanel from "../ContractInstancesPanel"; // ajuste chemin
+import ContractEventsPanel from "../ContractEventsPanel";
+
 
 
 interface Level0LabProps {
@@ -87,6 +89,7 @@ export default function Level0Lab({
 
   const [transactions, setTransactions] = useState<TxInfo[]>([]);
   const [deployments, setDeployments] = useState<DeploymentInfo[]>([]);
+
 
   
 
@@ -198,6 +201,8 @@ export default function Level0Lab({
       fetchUserDeployments();
     }
   }, [isConnected, connectedAddress, fetchUserDeployments]);
+
+  
 
   const handleSelectInstance = useCallback(
   async (deployment: DeploymentInfo) => {
@@ -373,9 +378,18 @@ const handleUpdate = async (): Promise<void> => {
 
     await tx.wait();
 
-    setTxStatus("confirmed");
+    // 🔥 RELIRE LA VALEUR SUR LA BLOCKCHAIN
+    const updatedMessage = await contractInstance.message();
+    setCurrentMessage(updatedMessage);
+    console.log("Contract Address used for update:", contractAddress);
+    console.log("Contract Instance address:", await contractInstance.getAddress());
+
+
     setNewMessage("");
-    fetchUserDeployments();
+    setTxStatus("confirmed");
+
+    await fetchUserDeployments(); // pour historique
+
   } catch (error) {
     console.error(error);
     setTxStatus("idle");
@@ -384,6 +398,21 @@ const handleUpdate = async (): Promise<void> => {
   }
 };
 
+
+useEffect(() => {
+  const loadMessage = async () => {
+    if (!contractInstance) return;
+
+    try {
+      const msg = await contractInstance.message();
+      setCurrentMessage(msg);
+    } catch {
+      setCurrentMessage("—");
+    }
+  };
+
+  loadMessage();
+}, [contractInstance]);
 
 
 
@@ -473,6 +502,11 @@ const handleUpdate = async (): Promise<void> => {
         />
 
         <BlockchainVisualizer transactions={transactions} />
+        <ContractEventsPanel
+            contract={contractInstance}
+            accentColor="#805AD5"
+          />
+
 
         <Box>
           <HStack mb={4}>
